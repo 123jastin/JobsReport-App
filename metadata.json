@@ -1,0 +1,6 @@
+{
+  "name": "JobsReport",
+  "description": "A modern, native job finding platform, featuring interactive job boards, job detail tracking, offline bookmarking, and powerful Gemini-driven AI Resume & Cover Letter advice.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
