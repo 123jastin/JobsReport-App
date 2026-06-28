@@ -28,6 +28,9 @@ import com.example.viewmodel.MainViewModel
 import com.example.network.RemoteCompany
 import coil.compose.AsyncImage
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.foundation.Image
+import androidx.compose.ui.res.painterResource
 
 // Local domain classes
 data class CompanyMetaInfo(
@@ -255,6 +258,16 @@ fun CompaniesScreen(
     }
 
     var selectedCompany by remember { mutableStateOf<Company?>(null) }
+    val displayCompanyJobs = remember(selectedCompanyJobs, selectedCompany, isCompanyJobsLoading) {
+        val currentCompany = selectedCompany
+        if (currentCompany == null || isCompanyJobsLoading) {
+            emptyList()
+        } else if (selectedCompanyJobs.isNotEmpty()) {
+            selectedCompanyJobs
+        } else {
+            currentCompany.jobs
+        }
+    }
     var searchTerm by remember { mutableStateOf("") }
     var currentPage by remember { mutableStateOf(1) }
     
@@ -512,9 +525,27 @@ fun CompaniesScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         // Custom Adaptive Logo Placeholder or actual image
-                        if (company.logoUrl != null) {
+                        val context = LocalContext.current
+                        val logoUrlToUse = company.logoUrl ?: company.logoResName ?: ""
+                        val isUrl = logoUrlToUse.startsWith("http://") || logoUrlToUse.startsWith("https://")
+                        val imageResId = remember(logoUrlToUse) {
+                            if (!isUrl && logoUrlToUse.isNotEmpty()) {
+                                context.resources.getIdentifier(logoUrlToUse, "drawable", context.packageName)
+                            } else 0
+                        }
+
+                        if (isUrl) {
                             AsyncImage(
-                                model = company.logoUrl,
+                                model = logoUrlToUse,
+                                contentDescription = company.name,
+                                modifier = Modifier
+                                    .size(72.dp)
+                                    .clip(RoundedCornerShape(16.dp)),
+                                contentScale = ContentScale.Crop
+                            )
+                        } else if (imageResId != 0) {
+                            Image(
+                                painter = painterResource(id = imageResId),
                                 contentDescription = company.name,
                                 modifier = Modifier
                                     .size(72.dp)
@@ -747,7 +778,7 @@ fun CompaniesScreen(
                             .height(18.dp)
                             .background(Color(0xFF3B82F6), RoundedCornerShape(2.dp))
                     )
-                    val jobsCount = if (isCompanyJobsLoading) 0 else selectedCompanyJobs.size
+                    val jobsCount = if (isCompanyJobsLoading) 0 else displayCompanyJobs.size
                     Text(
                         text = "Job Openings ($jobsCount)",
                         fontSize = 18.sp,
@@ -769,7 +800,7 @@ fun CompaniesScreen(
                         CircularProgressIndicator(color = Color(0xFF3B82F6))
                     }
                 }
-            } else if (selectedCompanyJobs.isEmpty()) {
+            } else if (displayCompanyJobs.isEmpty()) {
                 item {
                     Box(
                         modifier = Modifier
@@ -785,7 +816,7 @@ fun CompaniesScreen(
                     }
                 }
             } else {
-                items(selectedCompanyJobs) { job ->
+                items(displayCompanyJobs) { job ->
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -936,9 +967,27 @@ fun CompaniesScreen(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 // Custom Adaptive Logo or actual image
-                                if (company.logoUrl != null) {
+                                val context = LocalContext.current
+                                val logoUrlToUse = company.logoUrl ?: company.logoResName ?: ""
+                                val isUrl = logoUrlToUse.startsWith("http://") || logoUrlToUse.startsWith("https://")
+                                val imageResId = remember(logoUrlToUse) {
+                                    if (!isUrl && logoUrlToUse.isNotEmpty()) {
+                                        context.resources.getIdentifier(logoUrlToUse, "drawable", context.packageName)
+                                    } else 0
+                                }
+
+                                if (isUrl) {
                                     AsyncImage(
-                                        model = company.logoUrl,
+                                        model = logoUrlToUse,
+                                        contentDescription = company.name,
+                                        modifier = Modifier
+                                            .size(56.dp)
+                                            .clip(RoundedCornerShape(12.dp)),
+                                        contentScale = ContentScale.Crop
+                                    )
+                                } else if (imageResId != 0) {
+                                    Image(
+                                        painter = painterResource(id = imageResId),
                                         contentDescription = company.name,
                                         modifier = Modifier
                                             .size(56.dp)

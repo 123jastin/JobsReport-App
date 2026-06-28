@@ -76,7 +76,7 @@ class MainViewModel(application: Application, private val repository: JobReposit
             country == "Worldwide" || 
                     job.location.contains(country, ignoreCase = true) ||
                     (country == "Tanzania" && (job.location.contains("Tanzania", ignoreCase = true) || job.location.contains("Dar es Salaam", ignoreCase = true)))
-        }
+        }.sortedByDescending { it.datePosted }
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
@@ -399,7 +399,7 @@ class MainViewModel(application: Application, private val repository: JobReposit
                         salary = detail.salary ?: existing.salary,
                         type = detail.type ?: existing.type,
                         workplace = detail.workplace ?: existing.workplace,
-                        datePosted = detail.datePosted ?: existing.datePosted,
+                        datePosted = detail.postedAt ?: detail.datePosted ?: existing.datePosted,
                         description = detail.description ?: existing.description,
                         requirements = detail.requirements ?: existing.requirements,
                         benefits = detail.benefits ?: existing.benefits,

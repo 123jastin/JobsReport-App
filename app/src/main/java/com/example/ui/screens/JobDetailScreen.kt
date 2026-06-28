@@ -77,11 +77,22 @@ fun HtmlText(html: String, modifier: Modifier = Modifier) {
             }
         },
         update = { textView ->
+            // 🔥 Add basic CSS to style lists
+            val styledHtml = """
+                <style>
+                    body { color: #CBD5E1; font-size: 14px; line-height: 1.6; }
+                    ul, ol { padding-left: 20px; }
+                    li { margin-bottom: 4px; }
+                    b, strong { color: #F1F5F9; }
+                </style>
+                $html
+            """.trimIndent()
+            
             val spanned = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
-                Html.fromHtml(html, Html.FROM_HTML_MODE_LEGACY)
+                Html.fromHtml(styledHtml, Html.FROM_HTML_MODE_LEGACY)
             } else {
                 @Suppress("DEPRECATION")
-                Html.fromHtml(html)
+                Html.fromHtml(styledHtml)
             }
             textView.text = spanned
         }
@@ -113,11 +124,18 @@ fun JobDetailScreen(
 
     val liveJobDetail by viewModel.liveJobDetail.collectAsState()
     val isJobDetailLoading by viewModel.isJobDetailLoading.collectAsState()
+    val liveCompanies by viewModel.liveCompanies.collectAsState()
 
     LaunchedEffect(rawJob?.remoteId) {
         val remoteId = rawJob?.remoteId
         if (!remoteId.isNullOrEmpty()) {
             viewModel.fetchLiveJobDetail(remoteId)
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        if (liveCompanies == null) {
+            viewModel.fetchLiveCompanies()
         }
     }
 
@@ -129,21 +147,24 @@ fun JobDetailScreen(
 
     val job = remember(rawJob, liveJobDetail) {
         val ld = liveJobDetail
-        if (rawJob != null && ld != null && ld.id == rawJob.remoteId) {
-            rawJob.copy(
+        if (ld != null) {
+            // 🔥 Build from live data entirely
+            JobEntity(
+                id = rawJob?.id ?: -1,
                 title = ld.title,
                 company = ld.company,
+                logoResName = ld.logoUrl ?: ld.logoResName ?: "",
                 location = ld.location,
-                salary = ld.salary ?: rawJob.salary,
-                type = ld.type ?: rawJob.type,
-                workplace = ld.workplace ?: rawJob.workplace,
-                datePosted = ld.datePosted ?: rawJob.datePosted,
-                description = ld.description ?: rawJob.description,
-                requirements = ld.requirements ?: rawJob.requirements,
-                benefits = ld.benefits ?: rawJob.benefits,
-                category = ld.category ?: rawJob.category,
-                companyWebsite = ld.companyWebsite ?: rawJob.companyWebsite,
-                logoResName = ld.logoResName ?: rawJob.logoResName
+                salary = ld.salary ?: "Tshs / Neg",
+                type = ld.type ?: "Full-time",
+                workplace = ld.workplace ?: "Remote",
+                datePosted = ld.postedAt ?: ld.datePosted ?: "Recent",
+                description = ld.description ?: "",
+                requirements = ld.requirements ?: "",
+                benefits = ld.benefits ?: "",
+                category = ld.category ?: "General",
+                companyWebsite = ld.companyWebsite ?: "",
+                remoteId = ld.id ?: rawJob?.remoteId ?: ""
             )
         } else {
             rawJob
@@ -160,6 +181,14 @@ fun JobDetailScreen(
             CircularProgressIndicator(color = Color(0xFF3B82F6))
         }
         return
+    }
+
+    val companyDescription = remember(job, liveCompanies) {
+        val matched = liveCompanies?.find { 
+            it.name.equals(job.company, ignoreCase = true) || 
+            (!it.website.isNullOrEmpty() && job.companyWebsite.isNotEmpty() && it.website.contains(job.companyWebsite, ignoreCase = true))
+        }
+        matched?.description
     }
 
     // Navigation and interactive states
@@ -255,7 +284,7 @@ fun JobDetailScreen(
         }
     }
 
-    // Attachments (real from API if present, otherwise mock fallback)
+    // Attachments Section — only show if real attachments exist
     val attachments = remember(job, liveJobDetail) {
         val realImages = liveJobDetail?.images
         if (!realImages.isNullOrEmpty()) {
@@ -264,16 +293,13 @@ fun JobDetailScreen(
                 MockAttachment(
                     name = img.name ?: "Attachment",
                     type = type,
-                    description = img.caption ?: img.seoDescription ?: "Attachment for ${job.title}",
+                    description = img.caption ?: img.seoDescription ?: "",
                     url = img.url,
                     thumbnail = img.thumbnail ?: img.url
                 )
             }
         } else {
-            listOf(
-                MockAttachment("JR_Vacancy_Notice_${job.id}.pdf", "pdf", "Official Job Circular Details"),
-                MockAttachment("Corporate_Overview_${job.company.replace(" ", "_")}.png", "image", "Company Hiring Infographic")
-            )
+            emptyList() // 🔥 No mock data
         }
     }
 
@@ -600,26 +626,12 @@ fun JobDetailScreen(
 
                     Spacer(modifier = Modifier.height(4.dp))
 
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Text(
-                            text = job.company,
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = Color(0xFF3B82F6),
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.clickable {
-                                uriHandler.openUri(job.companyWebsite)
-                            }
-                        )
-                        Icon(
-                            imageVector = Icons.Default.OpenInNew,
-                            contentDescription = "Website",
-                            tint = Color(0xFF3B82F6),
-                            modifier = Modifier.size(12.dp)
-                        )
-                    }
+                    Text(
+                        text = job.company,
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = Color(0xFF3B82F6),
+                        fontWeight = FontWeight.Bold
+                    )
 
                     if (isExpired) {
                         Spacer(modifier = Modifier.height(8.dp))
@@ -707,7 +719,7 @@ fun JobDetailScreen(
                 }
             }
 
-            // Attachments Section
+            // Company Info Section
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -717,109 +729,161 @@ fun JobDetailScreen(
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text(
-                        text = "ATTACHMENTS (${attachments.size})",
+                        text = "ABOUT ${job.company.uppercase()}",
                         style = MaterialTheme.typography.labelSmall,
-                        color = Color(0xFF64748B),
+                        color = Color(0xFFF59E0B),
                         fontWeight = FontWeight.Bold,
                         fontFamily = FontFamily.Monospace,
                         letterSpacing = 1.sp
                     )
-
                     Spacer(modifier = Modifier.height(12.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Business, null, tint = Color(0xFF64748B), modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(job.company, fontWeight = FontWeight.Bold, color = Color.White, fontSize = 15.sp)
+                    }
+                    if (!job.companyWebsite.isNullOrEmpty()) {
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Language, null, tint = Color(0xFF3B82F6), modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = job.companyWebsite.replace("https://", "").replace("www.", ""),
+                                color = Color(0xFF3B82F6),
+                                fontSize = 12.sp,
+                                modifier = Modifier.clickable { uriHandler.openUri(job.companyWebsite) }
+                            )
+                        }
+                    }
+                    if (!companyDescription.isNullOrEmpty()) {
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Text(
+                            text = companyDescription ?: "",
+                            color = Color(0xFF94A3B8),
+                            fontSize = 13.sp,
+                            lineHeight = 20.sp,
+                            maxLines = 5,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+            }
 
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        attachments.forEachIndexed { index, attachment ->
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .background(Color(0xFF1E293B).copy(alpha = 0.6f))
-                                    .border(1.dp, Color(0xFF334155).copy(alpha = 0.4f), RoundedCornerShape(10.dp))
-                                    .clickable {
-                                        viewerIndex = index
-                                        viewerOpen = true
-                                    }
-                                    .padding(12.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
+            // Attachments Section — only show if real attachments exist
+            if (attachments.isNotEmpty()) {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(1.dp, Color(0xFF334155).copy(alpha = 0.3f), RoundedCornerShape(16.dp)),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B).copy(alpha = 0.2f)),
+                    shape = RoundedCornerShape(16.dp)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text(
+                            text = "ATTACHMENTS (${attachments.size})",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color(0xFF64748B),
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace,
+                            letterSpacing = 1.sp
+                        )
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            attachments.forEachIndexed { index, attachment ->
                                 Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(Color(0xFF1E293B).copy(alpha = 0.6f))
+                                        .border(1.dp, Color(0xFF334155).copy(alpha = 0.4f), RoundedCornerShape(10.dp))
+                                        .clickable {
+                                            viewerIndex = index
+                                            viewerOpen = true
+                                        }
+                                        .padding(12.dp),
                                     verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                    horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(36.dp)
-                                            .clip(RoundedCornerShape(6.dp))
-                                            .background(
-                                                if (attachment.type == "pdf") Color(0xFFEF4444).copy(alpha = 0.12f)
-                                                else Color(0xFF3B82F6).copy(alpha = 0.12f)
-                                            ),
-                                        contentAlignment = Alignment.Center
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(12.dp)
                                     ) {
-                                        if (attachment.type == "image" && !attachment.thumbnail.isNullOrEmpty()) {
-                                            AsyncImage(
-                                                model = ImageRequest.Builder(LocalContext.current)
-                                                    .data(attachment.thumbnail)
-                                                    .crossfade(true)
-                                                    .diskCachePolicy(CachePolicy.ENABLED)
-                                                    .memoryCachePolicy(CachePolicy.ENABLED)
-                                                    .build(),
-                                                contentDescription = attachment.name,
-                                                modifier = Modifier.fillMaxSize(),
-                                                contentScale = androidx.compose.ui.layout.ContentScale.Crop
+                                        Box(
+                                            modifier = Modifier
+                                                .size(36.dp)
+                                                .clip(RoundedCornerShape(6.dp))
+                                                .background(
+                                                    if (attachment.type == "pdf") Color(0xFFEF4444).copy(alpha = 0.12f)
+                                                    else Color(0xFF3B82F6).copy(alpha = 0.12f)
+                                                ),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            if (attachment.type == "image" && !attachment.thumbnail.isNullOrEmpty()) {
+                                                AsyncImage(
+                                                    model = ImageRequest.Builder(LocalContext.current)
+                                                        .data(attachment.thumbnail)
+                                                        .crossfade(true)
+                                                        .diskCachePolicy(CachePolicy.ENABLED)
+                                                        .memoryCachePolicy(CachePolicy.ENABLED)
+                                                        .build(),
+                                                    contentDescription = attachment.name,
+                                                    modifier = Modifier.fillMaxSize(),
+                                                    contentScale = androidx.compose.ui.layout.ContentScale.Crop
+                                                )
+                                            } else {
+                                                Icon(
+                                                    imageVector = if (attachment.type == "pdf") Icons.Default.PictureAsPdf else Icons.Default.Image,
+                                                    contentDescription = attachment.type,
+                                                    tint = if (attachment.type == "pdf") Color(0xFFF87171) else Color(0xFF60A5FA),
+                                                    modifier = Modifier.size(18.dp)
+                                                )
+                                            }
+                                        }
+
+                                        Column {
+                                            Text(
+                                                text = attachment.name,
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = Color.White,
+                                                fontWeight = FontWeight.Bold,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
                                             )
-                                        } else {
-                                            Icon(
-                                                imageVector = if (attachment.type == "pdf") Icons.Default.PictureAsPdf else Icons.Default.Image,
-                                                contentDescription = attachment.type,
-                                                tint = if (attachment.type == "pdf") Color(0xFFF87171) else Color(0xFF60A5FA),
-                                                modifier = Modifier.size(18.dp)
+                                            Text(
+                                                text = attachment.description,
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = Color(0xFF64748B),
+                                                fontSize = 10.sp
                                             )
                                         }
                                     }
 
-                                    Column {
-                                        Text(
-                                            text = attachment.name,
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = Color.White,
-                                            fontWeight = FontWeight.Bold,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                        Text(
-                                            text = attachment.description,
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = Color(0xFF64748B),
-                                            fontSize = 10.sp
-                                        )
-                                    }
-                                }
-
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    IconButton(
-                                        onClick = {
-                                            Toast.makeText(context, "Initiated download of ${attachment.name}...", Toast.LENGTH_SHORT).show()
-                                        },
-                                        modifier = Modifier.size(32.dp)
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                                     ) {
+                                        IconButton(
+                                            onClick = {
+                                                Toast.makeText(context, "Initiated download of ${attachment.name}...", Toast.LENGTH_SHORT).show()
+                                            },
+                                            modifier = Modifier.size(32.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Download,
+                                                contentDescription = "Download",
+                                                tint = Color(0xFF94A3B8),
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
                                         Icon(
-                                            imageVector = Icons.Default.Download,
-                                            contentDescription = "Download",
-                                            tint = Color(0xFF94A3B8),
+                                            imageVector = Icons.Default.ChevronRight,
+                                            contentDescription = "View",
+                                            tint = Color(0xFF475569),
                                             modifier = Modifier.size(16.dp)
                                         )
                                     }
-                                    Icon(
-                                        imageVector = Icons.Default.ChevronRight,
-                                        contentDescription = "View",
-                                        tint = Color(0xFF475569),
-                                        modifier = Modifier.size(16.dp)
-                                    )
                                 }
                             }
                         }

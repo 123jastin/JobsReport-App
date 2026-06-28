@@ -130,7 +130,7 @@ fun MainAppShell(viewModel: MainViewModel) {
 
   ModalNavigationDrawer(
     drawerState = drawerState,
-    gesturesEnabled = showChrome,
+    gesturesEnabled = showChrome && drawerState.isOpen,
     drawerContent = {
       if (showChrome) {
         ModalDrawerSheet(
