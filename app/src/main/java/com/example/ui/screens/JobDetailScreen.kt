@@ -43,6 +43,50 @@ import kotlinx.coroutines.delay
 import coil.compose.AsyncImage
 import coil.request.CachePolicy
 import coil.request.ImageRequest
+import androidx.compose.foundation.Image
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.viewinterop.AndroidView
+import android.widget.TextView
+import android.text.Html
+import android.text.method.LinkMovementMethod
+
+fun stripHtml(html: String): String {
+    return try {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
+            Html.fromHtml(html, Html.FROM_HTML_MODE_LEGACY).toString()
+        } else {
+            @Suppress("DEPRECATION")
+            Html.fromHtml(html).toString()
+        }
+    } catch (e: Exception) {
+        html
+    }
+}
+
+@Composable
+fun HtmlText(html: String, modifier: Modifier = Modifier) {
+    AndroidView(
+        modifier = modifier,
+        factory = { context ->
+            TextView(context).apply {
+                setTextColor(android.graphics.Color.parseColor("#CBD5E1"))
+                textSize = 14f
+                setLineSpacing(4f, 1.1f)
+                movementMethod = LinkMovementMethod.getInstance()
+                setLinkTextColor(android.graphics.Color.parseColor("#3B82F6"))
+            }
+        },
+        update = { textView ->
+            val spanned = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
+                Html.fromHtml(html, Html.FROM_HTML_MODE_LEGACY)
+            } else {
+                @Suppress("DEPRECATION")
+                Html.fromHtml(html)
+            }
+            textView.text = spanned
+        }
+    )
+}
 
 data class MockAttachment(
     val name: String,
@@ -500,7 +544,15 @@ fun JobDetailScreen(
                     modifier = Modifier.padding(16.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    val logoUrl = liveJobDetail?.logoUrl
+                    val logoUrl = liveJobDetail?.logoUrl ?: job.logoResName
+                    val isUrl = logoUrl.startsWith("http://") || logoUrl.startsWith("https://")
+                    val context = LocalContext.current
+                    val imageResId = remember(logoUrl) {
+                        if (!isUrl && logoUrl.isNotEmpty()) {
+                            context.resources.getIdentifier(logoUrl, "drawable", context.packageName)
+                        } else 0
+                    }
+
                     Box(
                         modifier = Modifier
                             .size(56.dp)
@@ -512,9 +564,16 @@ fun JobDetailScreen(
                             ),
                         contentAlignment = Alignment.Center
                     ) {
-                        if (!logoUrl.isNullOrEmpty()) {
+                        if (isUrl) {
                             AsyncImage(
                                 model = logoUrl,
+                                contentDescription = job.company,
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = androidx.compose.ui.layout.ContentScale.Crop
+                            )
+                        } else if (imageResId != 0) {
+                            Image(
+                                painter = painterResource(id = imageResId),
                                 contentDescription = job.company,
                                 modifier = Modifier.fillMaxSize(),
                                 contentScale = androidx.compose.ui.layout.ContentScale.Crop
@@ -770,31 +829,25 @@ fun JobDetailScreen(
 
             // Job Description
             DetailSectionCompact(title = "Job Description") {
-                Text(
-                    text = job.description,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = Color(0xFFCBD5E1),
-                    lineHeight = 22.sp
+                HtmlText(
+                    html = job.description,
+                    modifier = Modifier.fillMaxWidth()
                 )
             }
 
             // Requirements
             DetailSectionCompact(title = "Requirements") {
-                Text(
-                    text = job.requirements,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = Color(0xFFCBD5E1),
-                    lineHeight = 22.sp
+                HtmlText(
+                    html = job.requirements,
+                    modifier = Modifier.fillMaxWidth()
                 )
             }
 
             // Benefits
             DetailSectionCompact(title = "Benefits & Perks") {
-                Text(
-                    text = job.benefits,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = Color(0xFFCBD5E1),
-                    lineHeight = 22.sp
+                HtmlText(
+                    html = job.benefits,
+                    modifier = Modifier.fillMaxWidth()
                 )
             }
 
@@ -1372,7 +1425,7 @@ fun JobDetailScreen(
                                         Spacer(modifier = Modifier.height(10.dp))
 
                                         Text(
-                                            text = "CIRCULAR DIGEST DETAILS:\n${job.description.take(200)}...",
+                                            text = "CIRCULAR DIGEST DETAILS:\n${stripHtml(job.description).take(200)}...",
                                             fontSize = 11.sp,
                                             lineHeight = 16.sp,
                                             color = Color(0xFFCBD5E1)
@@ -1381,7 +1434,7 @@ fun JobDetailScreen(
                                         Spacer(modifier = Modifier.height(10.dp))
 
                                         Text(
-                                            text = "QUALIFICATION OUTLINES:\n${job.requirements.take(150)}...",
+                                            text = "QUALIFICATION OUTLINES:\n${stripHtml(job.requirements).take(150)}...",
                                             fontSize = 11.sp,
                                             lineHeight = 16.sp,
                                             color = Color(0xFFCBD5E1)

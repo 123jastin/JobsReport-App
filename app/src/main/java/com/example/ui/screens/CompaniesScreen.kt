@@ -26,6 +26,8 @@ import androidx.compose.ui.unit.sp
 import com.example.data.JobEntity
 import com.example.viewmodel.MainViewModel
 import com.example.network.RemoteCompany
+import coil.compose.AsyncImage
+import androidx.compose.ui.layout.ContentScale
 
 // Local domain classes
 data class CompanyMetaInfo(
@@ -43,6 +45,7 @@ data class CompanyMetaInfo(
 )
 
 data class Company(
+    val id: String,
     val name: String,
     val website: String,
     val description: String,
@@ -58,7 +61,8 @@ data class Company(
     val logoResName: String?,
     val totalJobs: Int,
     val activeJobs: Int,
-    val jobs: List<JobEntity>
+    val jobs: List<JobEntity>,
+    val logoUrl: String? = null
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -72,6 +76,8 @@ fun CompaniesScreen(
     val allJobs by viewModel.allJobs.collectAsState()
     val liveCompaniesState by viewModel.liveCompanies.collectAsState()
     val isCompaniesLoading by viewModel.isCompaniesLoading.collectAsState()
+    val selectedCompanyJobs by viewModel.selectedCompanyJobs.collectAsState()
+    val isCompanyJobsLoading by viewModel.isCompanyJobsLoading.collectAsState()
     
     // Group jobs dynamically into actual Company structures
     val companies = remember(allJobs, liveCompaniesState) {
@@ -80,6 +86,7 @@ fun CompaniesScreen(
             remoteList.map { rc ->
                 val jobsForCompany = allJobs.filter { it.company.equals(rc.name, ignoreCase = true) }
                 Company(
+                    id = rc.id ?: rc.name,
                     name = rc.name,
                     website = rc.website ?: "https://jobsreport.online",
                     description = rc.description ?: "Verified partner of JobsReport platform.",
@@ -92,10 +99,11 @@ fun CompaniesScreen(
                     district = rc.district,
                     postalCode = rc.postalCode,
                     country = rc.country ?: "US",
-                    logoResName = rc.logoResName ?: jobsForCompany.firstOrNull()?.logoResName,
+                    logoResName = rc.logoUrl ?: jobsForCompany.firstOrNull()?.logoResName,
                     totalJobs = rc.totalJobs ?: jobsForCompany.size,
                     activeJobs = rc.activeJobs ?: jobsForCompany.size,
-                    jobs = jobsForCompany
+                    jobs = jobsForCompany,
+                    logoUrl = rc.logoUrl
                 )
             }.sortedByDescending { it.activeJobs }
         } else {
@@ -224,6 +232,7 @@ fun CompaniesScreen(
                 }
 
                 Company(
+                    id = companyName,
                     name = companyName,
                     website = companyMetadata.website,
                     description = companyMetadata.description,
@@ -502,24 +511,35 @@ fun CompaniesScreen(
                             .padding(24.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        // Custom Adaptive Logo Placeholder with beautiful gradient matching react style
-                        Box(
-                            modifier = Modifier
-                                .size(72.dp)
-                                .clip(RoundedCornerShape(16.dp))
-                                .background(
-                                    Brush.linearGradient(
-                                        colors = listOf(Color(0xFF2563EB), Color(0xFF8B5CF6))
-                                    )
-                                ),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = company.name.firstOrNull()?.toString()?.uppercase() ?: "",
-                                color = Color.White,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 28.sp
+                        // Custom Adaptive Logo Placeholder or actual image
+                        if (company.logoUrl != null) {
+                            AsyncImage(
+                                model = company.logoUrl,
+                                contentDescription = company.name,
+                                modifier = Modifier
+                                    .size(72.dp)
+                                    .clip(RoundedCornerShape(16.dp)),
+                                contentScale = ContentScale.Crop
                             )
+                        } else {
+                            Box(
+                                modifier = Modifier
+                                    .size(72.dp)
+                                    .clip(RoundedCornerShape(16.dp))
+                                    .background(
+                                        Brush.linearGradient(
+                                            colors = listOf(Color(0xFF2563EB), Color(0xFF8B5CF6))
+                                        )
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = company.name.firstOrNull()?.toString()?.uppercase() ?: "",
+                                    color = Color.White,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 28.sp
+                                )
+                            }
                         }
 
                         Spacer(modifier = Modifier.width(20.dp))
@@ -727,8 +747,9 @@ fun CompaniesScreen(
                             .height(18.dp)
                             .background(Color(0xFF3B82F6), RoundedCornerShape(2.dp))
                     )
+                    val jobsCount = if (isCompanyJobsLoading) 0 else selectedCompanyJobs.size
                     Text(
-                        text = "Job Openings (${company.jobs.size})",
+                        text = "Job Openings ($jobsCount)",
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color.White
@@ -737,7 +758,18 @@ fun CompaniesScreen(
             }
 
             // Openings List
-            if (company.jobs.isEmpty()) {
+            if (isCompanyJobsLoading) {
+                item {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 32.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(color = Color(0xFF3B82F6))
+                    }
+                }
+            } else if (selectedCompanyJobs.isEmpty()) {
                 item {
                     Box(
                         modifier = Modifier
@@ -753,7 +785,7 @@ fun CompaniesScreen(
                     }
                 }
             } else {
-                items(company.jobs) { job ->
+                items(selectedCompanyJobs) { job ->
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -888,7 +920,7 @@ fun CompaniesScreen(
                             .border(1.dp, Color(0xFF334155).copy(alpha = 0.3f), RoundedCornerShape(24.dp))
                             .clickable {
                                 selectedCompany = company
-                                onCompanyClick(company.name)
+                                viewModel.fetchCompanyJobs(company.id)
                             }
                             .testTag("company_card_${company.name.replace(" ", "_")}"),
                         colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B).copy(alpha = 0.6f)),
@@ -903,24 +935,35 @@ fun CompaniesScreen(
                                 modifier = Modifier.fillMaxWidth(),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                // Gradient Logo box
-                                Box(
-                                    modifier = Modifier
-                                        .size(56.dp)
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .background(
-                                            Brush.linearGradient(
-                                                colors = listOf(Color(0xFF2563EB), Color(0xFF8B5CF6))
-                                            )
-                                        ),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(
-                                        text = company.name.firstOrNull()?.toString()?.uppercase() ?: "",
-                                        color = Color.White,
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 22.sp
+                                // Custom Adaptive Logo or actual image
+                                if (company.logoUrl != null) {
+                                    AsyncImage(
+                                        model = company.logoUrl,
+                                        contentDescription = company.name,
+                                        modifier = Modifier
+                                            .size(56.dp)
+                                            .clip(RoundedCornerShape(12.dp)),
+                                        contentScale = ContentScale.Crop
                                     )
+                                } else {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(56.dp)
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .background(
+                                                Brush.linearGradient(
+                                                    colors = listOf(Color(0xFF2563EB), Color(0xFF8B5CF6))
+                                                )
+                                            ),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = company.name.firstOrNull()?.toString()?.uppercase() ?: "",
+                                            color = Color.White,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 22.sp
+                                        )
+                                    }
                                 }
 
                                 Spacer(modifier = Modifier.width(16.dp))

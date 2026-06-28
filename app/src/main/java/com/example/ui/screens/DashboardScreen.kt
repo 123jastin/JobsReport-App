@@ -42,6 +42,7 @@ import androidx.compose.ui.unit.sp
 import com.example.R
 import com.example.data.JobEntity
 import com.example.viewmodel.MainViewModel
+import coil.compose.AsyncImage
 import kotlin.math.ceil
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -884,8 +885,9 @@ fun JobCardItem(
     onBookmarkToggle: () -> Unit
 ) {
     val context = LocalContext.current
+    val isUrl = job.logoResName.startsWith("http://") || job.logoResName.startsWith("https://")
     val imageResId = remember(job.logoResName) {
-        if (job.logoResName.isNotEmpty()) {
+        if (!isUrl && job.logoResName.isNotEmpty()) {
             context.resources.getIdentifier(job.logoResName, "drawable", context.packageName)
         } else 0
     }
@@ -915,7 +917,14 @@ fun JobCardItem(
                         .border(1.dp, Color(0xFF334155), RoundedCornerShape(14.dp)),
                     contentAlignment = Alignment.Center
                 ) {
-                    if (imageResId != 0) {
+                    if (isUrl) {
+                        AsyncImage(
+                            model = job.logoResName,
+                            contentDescription = "${job.company} logo",
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop
+                        )
+                    } else if (imageResId != 0) {
                         // Load using custom painter resource dynamically
                         androidx.compose.foundation.Image(
                             painter = painterResource(id = imageResId),

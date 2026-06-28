@@ -17,6 +17,8 @@ import kotlinx.coroutines.launch
 
 class MainViewModel(application: Application, private val repository: JobRepository) : AndroidViewModel(application) {
 
+    private val sharedPrefs = application.getSharedPreferences("app_prefs", android.content.Context.MODE_PRIVATE)
+
     // Filter and search states
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
@@ -30,7 +32,7 @@ class MainViewModel(application: Application, private val repository: JobReposit
     private val _selectedJobType = MutableStateFlow("All")
     val selectedJobType: StateFlow<String> = _selectedJobType.asStateFlow()
 
-    private val _selectedCountry = MutableStateFlow("Worldwide")
+    private val _selectedCountry = MutableStateFlow(sharedPrefs.getString("selected_country", "Worldwide") ?: "Worldwide")
     val selectedCountry: StateFlow<String> = _selectedCountry.asStateFlow()
 
     private val _isAdmin = MutableStateFlow(false)
@@ -46,6 +48,7 @@ class MainViewModel(application: Application, private val repository: JobReposit
         )
 
     val allJobs: StateFlow<List<JobEntity>> = repository.allJobs
+        .map { list -> list.sortedByDescending { it.id } }
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5000),
@@ -102,6 +105,13 @@ class MainViewModel(application: Application, private val repository: JobReposit
 
     private val _isCompaniesLoading = MutableStateFlow(false)
     val isCompaniesLoading: StateFlow<Boolean> = _isCompaniesLoading.asStateFlow()
+
+    // Selected Company Jobs API States
+    private val _isCompanyJobsLoading = MutableStateFlow(false)
+    val isCompanyJobsLoading: StateFlow<Boolean> = _isCompanyJobsLoading.asStateFlow()
+
+    private val _selectedCompanyJobs = MutableStateFlow<List<JobEntity>>(emptyList())
+    val selectedCompanyJobs: StateFlow<List<JobEntity>> = _selectedCompanyJobs.asStateFlow()
 
     // Live Market API States
     private val _isMarketLoading = MutableStateFlow(false)
@@ -246,6 +256,73 @@ class MainViewModel(application: Application, private val repository: JobReposit
         }
     }
 
+    fun fetchCompanyJobs(companyId: String) {
+        viewModelScope.launch {
+            _isCompanyJobsLoading.value = true
+            try {
+                val jobs = MarketRetrofitClient.service.getCompanyJobs(companyId)
+                if (jobs.isNotEmpty()) {
+                    val existingJobs = repository.getAllJobs()
+                    for (rj in jobs) {
+                        val existing = existingJobs.find { 
+                            (rj.id != null && rj.id.isNotEmpty() && it.remoteId == rj.id) || 
+                            (it.company.equals(rj.company, ignoreCase = true) && it.title.equals(rj.title, ignoreCase = true)) 
+                        }
+                        if (existing != null) {
+                            val updated = existing.copy(
+                                location = rj.location,
+                                salary = rj.salary ?: existing.salary,
+                                type = rj.type ?: existing.type,
+                                workplace = rj.workplace ?: existing.workplace,
+                                datePosted = rj.datePosted ?: existing.datePosted,
+                                description = rj.description ?: existing.description,
+                                requirements = rj.requirements ?: existing.requirements,
+                                benefits = rj.benefits ?: existing.benefits,
+                                category = rj.category ?: existing.category,
+                                companyWebsite = rj.companyWebsite ?: existing.companyWebsite,
+                                logoResName = rj.logoUrl ?: rj.logoResName ?: existing.logoResName,
+                                remoteId = rj.id ?: existing.remoteId
+                            )
+                            repository.updateJob(updated)
+                        } else {
+                            val newJob = JobEntity(
+                                title = rj.title,
+                                company = rj.company,
+                                logoResName = rj.logoUrl ?: rj.logoResName ?: "",
+                                location = rj.location,
+                                salary = rj.salary ?: "Tshs / Neg",
+                                type = rj.type ?: "Full-time",
+                                workplace = rj.workplace ?: "Remote",
+                                datePosted = rj.datePosted ?: "Just now",
+                                description = rj.description ?: "",
+                                requirements = rj.requirements ?: "",
+                                benefits = rj.benefits ?: "",
+                                category = rj.category ?: "General",
+                                companyWebsite = rj.companyWebsite ?: "https://jobsreport.online",
+                                remoteId = rj.id ?: ""
+                            )
+                            repository.insertJob(newJob)
+                        }
+                    }
+                }
+                
+                // Read back from DB to get populated IDs
+                val freshJobs = repository.getAllJobs()
+                val companyJobs = freshJobs.filter { freshJob ->
+                    jobs.any { rj -> 
+                        (rj.id != null && rj.id.isNotEmpty() && freshJob.remoteId == rj.id) || 
+                        (freshJob.company.equals(rj.company, ignoreCase = true) && freshJob.title.equals(rj.title, ignoreCase = true))
+                    }
+                }
+                _selectedCompanyJobs.value = companyJobs
+            } catch (e: Exception) {
+                e.printStackTrace()
+            } finally {
+                _isCompanyJobsLoading.value = false
+            }
+        }
+    }
+
     fun fetchLiveMarket() {
         viewModelScope.launch {
             _isMarketLoading.value = true
@@ -271,7 +348,7 @@ class MainViewModel(application: Application, private val repository: JobReposit
                                 benefits = rj.benefits ?: existing.benefits,
                                 category = rj.category ?: existing.category,
                                 companyWebsite = rj.companyWebsite ?: existing.companyWebsite,
-                                logoResName = rj.logoResName ?: existing.logoResName,
+                                logoResName = rj.logoUrl ?: rj.logoResName ?: existing.logoResName,
                                 remoteId = rj.id ?: existing.remoteId
                             )
                             repository.updateJob(updated)
@@ -279,7 +356,7 @@ class MainViewModel(application: Application, private val repository: JobReposit
                             val newJob = JobEntity(
                                 title = rj.title,
                                 company = rj.company,
-                                logoResName = rj.logoResName ?: "",
+                                logoResName = rj.logoUrl ?: rj.logoResName ?: "",
                                 location = rj.location,
                                 salary = rj.salary ?: "Tshs / Neg",
                                 type = rj.type ?: "Full-time",
@@ -328,7 +405,7 @@ class MainViewModel(application: Application, private val repository: JobReposit
                         benefits = detail.benefits ?: existing.benefits,
                         category = detail.category ?: existing.category,
                         companyWebsite = detail.companyWebsite ?: existing.companyWebsite,
-                        logoResName = detail.logoResName ?: existing.logoResName
+                        logoResName = detail.logoUrl ?: detail.logoResName ?: existing.logoResName
                     )
                     repository.updateJob(updated)
                 }
@@ -382,7 +459,7 @@ class MainViewModel(application: Application, private val repository: JobReposit
                     benefits = rj.benefits ?: existing.benefits,
                     category = rj.category ?: existing.category,
                     companyWebsite = rj.companyWebsite ?: existing.companyWebsite,
-                    logoResName = rj.logoResName ?: existing.logoResName,
+                    logoResName = rj.logoUrl ?: rj.logoResName ?: existing.logoResName,
                     remoteId = rj.id ?: existing.remoteId
                 )
                 repository.updateJob(updated)
@@ -391,7 +468,7 @@ class MainViewModel(application: Application, private val repository: JobReposit
                 val newJob = JobEntity(
                     title = rj.title,
                     company = rj.company,
-                    logoResName = rj.logoResName ?: "",
+                    logoResName = rj.logoUrl ?: rj.logoResName ?: "",
                     location = rj.location,
                     salary = rj.salary ?: "Tshs / Neg",
                     type = rj.type ?: "Full-time",
@@ -442,7 +519,7 @@ class MainViewModel(application: Application, private val repository: JobReposit
                                 benefits = rj.benefits ?: existing.benefits,
                                 category = rj.category ?: existing.category,
                                 companyWebsite = rj.companyWebsite ?: existing.companyWebsite,
-                                logoResName = rj.logoResName ?: existing.logoResName,
+                                logoResName = rj.logoUrl ?: rj.logoResName ?: existing.logoResName,
                                 remoteId = rj.id ?: existing.remoteId
                             )
                             repository.updateJob(updated)
@@ -450,7 +527,7 @@ class MainViewModel(application: Application, private val repository: JobReposit
                             val newJob = com.example.data.JobEntity(
                                 title = rj.title,
                                 company = rj.company,
-                                logoResName = rj.logoResName ?: "",
+                                logoResName = rj.logoUrl ?: rj.logoResName ?: "",
                                 location = rj.location,
                                 salary = rj.salary ?: "Tshs / Neg",
                                 type = rj.type ?: "Full-time",
@@ -494,6 +571,7 @@ class MainViewModel(application: Application, private val repository: JobReposit
 
     fun setSelectedCountry(country: String) {
         _selectedCountry.value = country
+        sharedPrefs.edit().putString("selected_country", country).apply()
     }
 
     fun setAdmin(admin: Boolean) {

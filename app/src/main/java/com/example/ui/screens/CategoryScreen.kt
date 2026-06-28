@@ -28,6 +28,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.JobEntity
 import com.example.viewmodel.MainViewModel
+import coil.compose.AsyncImage
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
+import androidx.compose.foundation.Image
+import androidx.compose.ui.platform.LocalContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -480,6 +485,14 @@ private fun JobItemRow(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
+    val isUrl = job.logoResName.startsWith("http://") || job.logoResName.startsWith("https://")
+    val imageResId = remember(job.logoResName) {
+        if (!isUrl && job.logoResName.isNotEmpty()) {
+            context.resources.getIdentifier(job.logoResName, "drawable", context.packageName)
+        } else 0
+    }
+
     Card(
         modifier = modifier
             .fillMaxWidth()
@@ -506,12 +519,28 @@ private fun JobItemRow(
                         .border(1.dp, Color.White.copy(alpha = 0.1f), RoundedCornerShape(10.dp)),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(
-                        text = job.company.firstOrNull()?.uppercase()?.toString() ?: "?",
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFF94A3B8)
-                    )
+                    if (isUrl) {
+                        AsyncImage(
+                            model = job.logoResName,
+                            contentDescription = "${job.company} logo",
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop
+                        )
+                    } else if (imageResId != 0) {
+                        Image(
+                            painter = painterResource(id = imageResId),
+                            contentDescription = "${job.company} logo",
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop
+                        )
+                    } else {
+                        Text(
+                            text = job.company.firstOrNull()?.uppercase()?.toString() ?: "?",
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF94A3B8)
+                        )
+                    }
                 }
 
                 Column(

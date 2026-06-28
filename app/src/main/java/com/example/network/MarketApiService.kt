@@ -245,10 +245,15 @@ interface MarketApiService {
     suspend fun getReportDetail(
         @Path("slug") slug: String
     ): RemoteReportDetail
+
+    @GET("api/company-jobs/{companyId}")
+    suspend fun getCompanyJobs(
+        @Path("companyId") companyId: String
+    ): List<RemoteJob>
 }
 
 object MarketRetrofitClient {
-    private const val BASE_URL = "https://ais-dev-7lny3ht7rt4jqes2yrodr3-264764251135.europe-west2.run.app/"
+    private const val BASE_URL = "https://jobsreport.online/"
 
     private val okHttpClient = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)

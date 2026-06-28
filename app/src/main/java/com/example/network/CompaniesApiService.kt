@@ -11,8 +11,10 @@ import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 
 @JsonClass(generateAdapter = true)
 data class RemoteCompany(
+    val id: String? = null,
     val name: String,
     val website: String? = null,
+    val url: String? = null,
     val description: String? = null,
     val industry: String? = null,
     val foundedYear: String? = null,
@@ -22,7 +24,9 @@ data class RemoteCompany(
     val locality: String? = null,
     val district: String? = null,
     val postalCode: String? = null,
+    val postalArea: String? = null,
     val country: String? = null,
+    val logoUrl: String? = null,
     val logoResName: String? = null,
     val totalJobs: Int? = null,
     val activeJobs: Int? = null
@@ -34,7 +38,7 @@ interface CompaniesApiService {
 }
 
 object CompaniesRetrofitClient {
-    private const val BASE_URL = "https://ais-dev-7lny3ht7rt4jqes2yrodr3-264764251135.europe-west2.run.app/"
+    private const val BASE_URL = "https://jobsreport.online/"
 
     private val okHttpClient = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)

@@ -29,7 +29,13 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.JobEntity
+import com.example.data.COUNTRIES
 import com.example.viewmodel.MainViewModel
+import coil.compose.AsyncImage
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
+import androidx.compose.foundation.Image
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -462,8 +468,16 @@ fun HomeScreen(
                         }
                     }
                 } else {
+                    val context = LocalContext.current
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         displayJobs.forEach { job ->
+                            val isUrl = job.logoResName.startsWith("http://") || job.logoResName.startsWith("https://")
+                            val imageResId = remember(job.logoResName) {
+                                if (!isUrl && job.logoResName.isNotEmpty()) {
+                                    context.resources.getIdentifier(job.logoResName, "drawable", context.packageName)
+                                } else 0
+                            }
+
                             Card(
                                 onClick = { onJobClick(job.id) },
                                 modifier = Modifier
@@ -477,7 +491,7 @@ fun HomeScreen(
                                     modifier = Modifier.padding(14.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    // Circular Logo Placeholder
+                                    // Circular Logo with Dynamic Image loading (URL/Drawable fallback)
                                     Box(
                                         modifier = Modifier
                                             .size(40.dp)
@@ -485,12 +499,28 @@ fun HomeScreen(
                                             .background(Color(0xFF334155)),
                                         contentAlignment = Alignment.Center
                                     ) {
-                                        Text(
-                                            text = job.company.take(2).uppercase(),
-                                            color = Color.White,
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 14.sp
-                                        )
+                                        if (isUrl) {
+                                            AsyncImage(
+                                                model = job.logoResName,
+                                                contentDescription = "${job.company} logo",
+                                                modifier = Modifier.fillMaxSize(),
+                                                contentScale = ContentScale.Crop
+                                            )
+                                        } else if (imageResId != 0) {
+                                            Image(
+                                                painter = painterResource(id = imageResId),
+                                                contentDescription = "${job.company} logo",
+                                                modifier = Modifier.fillMaxSize(),
+                                                contentScale = ContentScale.Crop
+                                            )
+                                        } else {
+                                            Text(
+                                                text = job.company.take(2).uppercase(),
+                                                color = Color.White,
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 14.sp
+                                            )
+                                        }
                                     }
 
                                     Spacer(modifier = Modifier.width(12.dp))
@@ -644,15 +674,10 @@ fun HomeScreen(
                     )
                 }
 
-                val countries = listOf(
-                    CountryInfo("Worldwide", "🌍", Color(0xFF3B82F6)),
-                    CountryInfo("Tanzania", "🇹🇿", Color(0xFF10B981)),
-                    CountryInfo("United States", "🇺🇸", Color(0xFF3B82F6)),
-                    CountryInfo("United Kingdom", "🇬🇧", Color(0xFFEF4444)),
-                    CountryInfo("Germany", "🇩🇪", Color(0xFFF59E0B)),
-                    CountryInfo("Kenya", "🇰🇪", Color(0xFF10B981)),
-                    CountryInfo("South Africa", "🇿🇦", Color(0xFFEF4444))
-                )
+                val countries = remember {
+                    listOf(CountryInfo("Worldwide", "🌍", Color(0xFF3B82F6))) +
+                    COUNTRIES.map { CountryInfo(it.name, it.flag, Color(0xFF10B981)) }
+                }
 
                 LazyRow(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),

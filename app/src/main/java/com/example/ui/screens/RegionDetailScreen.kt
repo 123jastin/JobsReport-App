@@ -29,6 +29,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.JobEntity
 import com.example.viewmodel.MainViewModel
+import coil.compose.AsyncImage
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
+import androidx.compose.foundation.Image
 
 private data class LocationInfo(
     val name: String,
@@ -504,6 +508,14 @@ private fun JobRowItem(
     isExpired: Boolean = false,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
+    val isUrl = job.logoResName.startsWith("http://") || job.logoResName.startsWith("https://")
+    val imageResId = remember(job.logoResName) {
+        if (!isUrl && job.logoResName.isNotEmpty()) {
+            context.resources.getIdentifier(job.logoResName, "drawable", context.packageName)
+        } else 0
+    }
+
     Card(
         modifier = modifier
             .fillMaxWidth()
@@ -533,12 +545,28 @@ private fun JobRowItem(
                     .border(1.dp, Color.White.copy(alpha = 0.1f), RoundedCornerShape(12.dp)),
                 contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = job.company.firstOrNull()?.toString()?.uppercase() ?: "?",
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White
-                )
+                if (isUrl) {
+                    AsyncImage(
+                        model = job.logoResName,
+                        contentDescription = "${job.company} logo",
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
+                } else if (imageResId != 0) {
+                    Image(
+                        painter = painterResource(id = imageResId),
+                        contentDescription = "${job.company} logo",
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
+                } else {
+                    Text(
+                        text = job.company.firstOrNull()?.toString()?.uppercase() ?: "?",
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                }
             }
 
             // Job metadata
